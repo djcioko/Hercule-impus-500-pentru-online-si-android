@@ -2,6 +2,7 @@ import React from 'react';
 import { DeckState, MixerState } from '../../types/dj';
 import { RotaryKnob } from './RotaryKnob';
 import { VuMeter } from './VuMeter';
+import { VerticalFader } from './VerticalFader';
 import { MidiEditBadge } from './MidiEditBadge';
 import { Headphones, Activity } from 'lucide-react';
 
@@ -347,25 +348,22 @@ export const CentralMixer: React.FC<CentralMixerProps> = ({
 
           {/* Channel Fader & VU Meter (Volume Modulated) */}
           <div className="flex items-center gap-2 mt-1">
-            <VuMeter level={effectiveMeterL} height={100} />
+            <VuMeter level={effectiveMeterL} height={130} />
             <MidiEditBadge
               controlId="fader_volume_l"
               isEditMode={isMidiEditMode}
               isSelected={selectedMidiControl === 'fader_volume_l'}
               onClick={() => onSelectMidiControl('fader_volume_l')}
             >
-              <div className="relative h-28 flex items-center justify-center">
-                <input
-                  type="range"
-                  min="0"
-                  max="1.2"
-                  step="0.01"
-                  value={deckL.volume}
-                  onChange={e => onDeckVolumeChange('L', parseFloat(e.target.value))}
-                  className="h-28 -rotate-90 origin-center cursor-pointer appearance-none bg-zinc-800 rounded w-24 accent-cyan-400"
-                  style={{ width: '100px' }}
-                />
-              </div>
+              <VerticalFader
+                value={deckL.volume}
+                label="VOL CH 1"
+                color="cyan"
+                min={0}
+                max={1.2}
+                height={130}
+                onChange={val => onDeckVolumeChange('L', val)}
+              />
             </MidiEditBadge>
           </div>
         </div>
@@ -571,20 +569,17 @@ export const CentralMixer: React.FC<CentralMixerProps> = ({
               isSelected={selectedMidiControl === 'fader_volume_r'}
               onClick={() => onSelectMidiControl('fader_volume_r')}
             >
-              <div className="relative h-28 flex items-center justify-center">
-                <input
-                  type="range"
-                  min="0"
-                  max="1.2"
-                  step="0.01"
-                  value={deckR.volume}
-                  onChange={e => onDeckVolumeChange('R', parseFloat(e.target.value))}
-                  className="h-28 -rotate-90 origin-center cursor-pointer appearance-none bg-zinc-800 rounded w-24 accent-orange-400"
-                  style={{ width: '100px' }}
-                />
-              </div>
+              <VerticalFader
+                value={deckR.volume}
+                label="VOL CH 2"
+                color="orange"
+                min={0}
+                max={1.2}
+                height={130}
+                onChange={val => onDeckVolumeChange('R', val)}
+              />
             </MidiEditBadge>
-            <VuMeter level={effectiveMeterR} height={100} />
+            <VuMeter level={effectiveMeterR} height={130} />
           </div>
         </div>
       </div>

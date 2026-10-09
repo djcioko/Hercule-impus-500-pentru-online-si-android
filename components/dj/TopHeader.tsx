@@ -15,7 +15,9 @@ import {
   Tv,
   FileText,
   CheckCircle,
-  Wrench
+  Wrench,
+  HardDrive,
+  Smartphone
 } from 'lucide-react';
 
 interface TopHeaderProps {
@@ -27,7 +29,7 @@ interface TopHeaderProps {
   masterPeakR: number;
   isRecording: boolean;
   recordingDuration: number;
-  activeView: 'decks' | 'samples' | 'jingles' | 'full' | 'ai';
+  activeView: 'decks' | 'samples' | 'jingles' | 'full' | 'ai' | 'explorer' | 'android';
   isMidiEditMode: boolean;
   selectedMidiControl: string | null;
   onToggleMidiEditMode: () => void;
@@ -39,7 +41,7 @@ interface TopHeaderProps {
   onToggleRecording: () => void;
   onDownloadRecording: () => void;
   hasRecording: boolean;
-  onSelectView: (view: 'decks' | 'samples' | 'jingles' | 'full' | 'ai') => void;
+  onSelectView: (view: 'decks' | 'samples' | 'jingles' | 'full' | 'ai' | 'explorer' | 'android') => void;
   onBpmChange?: (bpm: number) => void;
 }
 
@@ -102,28 +104,35 @@ export const TopHeader: React.FC<TopHeaderProps> = ({
 
         {/* MIDI Control & Blue MIDI Edit Buttons */}
         <div className="flex flex-wrap items-center gap-2.5 bg-zinc-900/90 px-3 py-1.5 rounded-xl border border-zinc-800">
-          {/* Connection Status */}
+          {/* Connection Status & Device Name */}
           <div className="flex items-center gap-1.5">
             <Usb size={14} className={midiStatus === 'connected' ? 'text-emerald-400' : 'text-zinc-500'} />
-            <span
-              className={`text-xs font-mono font-bold ${
-                midiStatus === 'connected'
-                  ? 'text-emerald-400'
+            <div className="flex flex-col">
+              <span
+                className={`text-xs font-mono font-bold ${
+                  midiStatus === 'connected'
+                    ? 'text-emerald-400'
+                    : midiStatus === 'error'
+                    ? 'text-red-400'
+                    : midiStatus === 'unsupported'
+                    ? 'text-zinc-500'
+                    : 'text-zinc-400'
+                }`}
+              >
+                {midiStatus === 'connected'
+                  ? 'MIDI: ✅ Conectat'
                   : midiStatus === 'error'
-                  ? 'text-red-400'
+                  ? 'MIDI: ❌ Eroare'
                   : midiStatus === 'unsupported'
-                  ? 'text-zinc-500'
-                  : 'text-zinc-400'
-              }`}
-            >
-              {midiStatus === 'connected'
-                ? 'MIDI: ✅ Conectat'
-                : midiStatus === 'error'
-                ? 'MIDI: ❌ Eroare'
-                : midiStatus === 'unsupported'
-                ? 'MIDI: ❌ Nesup.'
-                : 'MIDI: ❌ Neconectat'}
-            </span>
+                  ? 'MIDI: ❌ Nesup.'
+                  : 'MIDI: ❌ Neconectat'}
+              </span>
+              {midiDevices && midiDevices.length > 0 && (
+                <span className="text-[10px] font-mono text-cyan-300 font-bold truncate max-w-[150px] sm:max-w-[200px]" title={midiDevices.join(', ')}>
+                  🎹 {midiDevices.join(', ')}
+                </span>
+              )}
+            </div>
           </div>
 
           {midiStatus !== 'connected' ? (
@@ -336,7 +345,29 @@ export const TopHeader: React.FC<TopHeaderProps> = ({
                 : 'text-zinc-400 hover:text-white'
             }`}
           >
-            <Sparkles size={14} /> MUZICĂ (YOUTUBE, SPOTIFY, FESTIFY)
+            <Sparkles size={14} /> FESTIFY & ONLINE
+          </button>
+
+          <button
+            onClick={() => onSelectView('explorer')}
+            className={`px-3 py-1.5 rounded-lg text-xs font-mono font-bold flex items-center gap-1.5 transition-all border ${
+              activeView === 'explorer'
+                ? 'bg-cyan-600 text-white border-cyan-400 shadow-[0_0_12px_rgba(6,182,212,0.6)]'
+                : 'text-cyan-400 border-cyan-500/30 hover:bg-cyan-950/40 hover:text-white'
+            }`}
+          >
+            <HardDrive size={14} /> 📂 EXPLORER MUZICĂ
+          </button>
+
+          <button
+            onClick={() => onSelectView('android')}
+            className={`px-3 py-1.5 rounded-lg text-xs font-mono font-bold flex items-center gap-1.5 transition-all border ${
+              activeView === 'android'
+                ? 'bg-emerald-600 text-white border-emerald-400 shadow-[0_0_12px_rgba(16,185,129,0.6)]'
+                : 'text-emerald-400 border-emerald-500/30 hover:bg-emerald-950/40 hover:text-white'
+            }`}
+          >
+            <Smartphone size={14} /> 📱 MOD ANDROID (OTG)
           </button>
         </div>
 

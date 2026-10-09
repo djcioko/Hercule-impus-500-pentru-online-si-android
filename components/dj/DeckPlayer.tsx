@@ -15,6 +15,10 @@ interface DeckPlayerProps {
   onSelectMidiControl: (id: string) => void;
   onPlayToggle: () => void;
   onCue: () => void;
+  onCueHoldStart?: () => void;
+  onCueHoldEnd?: () => void;
+  onSetCuePoint?: () => void;
+  onVolumeChange?: (val: number) => void;
   onScrub: (seconds: number) => void;
   onPitchChange: (pitch: number) => void;
   onPitchBend: (amount: number) => void;
@@ -37,6 +41,10 @@ export const DeckPlayer: React.FC<DeckPlayerProps> = ({
   onSelectMidiControl,
   onPlayToggle,
   onCue,
+  onCueHoldStart,
+  onCueHoldEnd,
+  onSetCuePoint,
+  onVolumeChange,
   onScrub,
   onPitchChange,
   onPitchBend,
@@ -98,6 +106,42 @@ export const DeckPlayer: React.FC<DeckPlayerProps> = ({
 
         {/* Mini VU Meter & Audio Sources Button */}
         <div className="flex items-center gap-2 shrink-0">
+          {/* Channel Fader Status Badge & Quick Mute */}
+          <div className="flex items-center gap-1 bg-zinc-950 px-2 py-1 rounded border border-zinc-800">
+            {deck.volume <= 0.01 ? (
+              <div className="flex items-center gap-1.5">
+                <span className="w-2 h-2 rounded-full bg-red-500 animate-ping" />
+                <span className="text-[9px] font-mono font-black text-red-400 uppercase tracking-tight">
+                  FADER JOS (MUT)
+                </span>
+                {onVolumeChange && (
+                  <button
+                    onClick={() => onVolumeChange(1.0)}
+                    className="px-1 py-0.2 bg-red-900/60 hover:bg-red-800 text-white rounded text-[8px] font-mono border border-red-500/50"
+                    title="Ridică faderul la 100%"
+                  >
+                    +100%
+                  </button>
+                )}
+              </div>
+            ) : (
+              <div className="flex items-center gap-1.5">
+                <span className="text-[9px] font-mono text-zinc-400">
+                  VOL: <strong className={themeText}>{Math.round((deck.volume / 1.0) * 100)}%</strong>
+                </span>
+                {onVolumeChange && (
+                  <button
+                    onClick={() => onVolumeChange(0)}
+                    className="px-1 py-0.2 bg-zinc-800 hover:bg-red-900 text-zinc-300 hover:text-white rounded text-[8px] font-mono border border-zinc-700 hover:border-red-500 transition-colors"
+                    title="Lasă faderul JOS (Mute 0%)"
+                  >
+                    CUT 0%
+                  </button>
+                )}
+              </div>
+            )}
+          </div>
+
           {/* Mini VU Meter modulated by channel volume */}
           <div className="flex flex-col items-end gap-0.5 bg-zinc-950 px-2 py-1 rounded border border-zinc-800">
             <div className="flex items-center gap-1">
@@ -344,21 +388,67 @@ export const DeckPlayer: React.FC<DeckPlayerProps> = ({
           isSelected={selectedMidiControl === `transport_cue_${prefix}`}
           onClick={() => onSelectMidiControl(`transport_cue_${prefix}`)}
         >
-          <button
-            onClick={onCue}
-            className="w-full py-3.5 px-4 rounded-xl bg-zinc-800 hover:bg-zinc-750 active:scale-[0.98] border-2 border-amber-600/70 shadow-lg text-white font-extrabold flex flex-col items-center justify-center gap-0.5 group transition-all"
-          >
-            <div className="flex items-center gap-2">
-              <Disc size={18} className="text-amber-400 group-hover:rotate-45 transition-transform" />
-              <span className="text-lg tracking-wider text-amber-300">CUE</span>
-            </div>
-            <div className="flex items-center gap-2 text-[10px] font-mono text-amber-400/80">
-              <span className="bg-zinc-900/90 px-1.5 py-0.2 rounded border border-amber-500/40">
-                KEY: {cueKey}
-              </span>
-              <span className="text-zinc-500">{midiCueNote}</span>
-            </div>
-          </button>
+          <div className="flex flex-col gap-1 w-full">
+            <button
+              onMouseDown={e => {
+                if (e.button === 0 && onCueHoldStart) {
+                  onCueHoldStart();
+                }
+              }}
+              onMouseUp={e => {
+                if (e.button === 0 && onCueHoldEnd) {
+                  onCueHoldEnd();
+                }
+              }}
+              onMouseLeave={() => {
+                if (onCueHoldEnd) {
+                  onCueHoldEnd();
+                }
+              }}
+              onClick={onCue}
+              className={`w-full py-3.5 px-4 rounded-xl active:scale-[0.98] border-2 shadow-lg font-extrabold flex flex-col items-center justify-center gap-0.5 group transition-all ${
+                deck.isPlaying
+                  ? 'bg-amber-600/90 hover:bg-amber-500 border-amber-400 text-white shadow-[0_0_16px_rgba(245,158,11,0.6)]'
+                  : 'bg-zinc-800 hover:bg-zinc-750 border-amber-600/70 text-white hover:border-amber-400'
+              }`}
+              title={
+                deck.isPlaying
+                  ? 'CUE: Oprește și sare la Cue Point (0:00)'
+                  : 'CUE: Play din Cue Point (Ține apăsat pt. preview)'
+              }
+            >
+              <div className="flex items-center gap-2">
+                <Disc
+                  size={18}
+                  className={`text-amber-400 transition-transform ${
+                    deck.isPlaying ? 'animate-spin' : 'group-hover:rotate-45'
+                  }`}
+                />
+                <span className="text-lg tracking-wider text-amber-300">CUE</span>
+              </div>
+              <div className="flex items-center gap-2 text-[10px] font-mono text-amber-400/80">
+                <span className="bg-zinc-900/90 px-1.5 py-0.2 rounded border border-amber-500/40">
+                  KEY: {cueKey}
+                </span>
+                <span className="text-zinc-400">{midiCueNote}</span>
+              </div>
+            </button>
+
+            {/* Quick Set Cue Point Button */}
+            {onSetCuePoint && (
+              <button
+                onClick={e => {
+                  e.stopPropagation();
+                  onSetCuePoint();
+                }}
+                className="w-full py-0.5 bg-zinc-950 hover:bg-zinc-800 text-[9px] font-mono text-amber-400/90 hover:text-amber-300 rounded border border-amber-600/30 flex items-center justify-center gap-1 transition-colors"
+                title={`Setează punctul CUE la poziția curentă (${deck.currentTime.toFixed(1)}s)`}
+              >
+                <span>SET CUE:</span>
+                <span className="font-bold text-white">{(deck.cuePoint || 0).toFixed(1)}s</span>
+              </button>
+            )}
+          </div>
         </MidiEditBadge>
 
         {/* PLAY / PAUSE Button */}

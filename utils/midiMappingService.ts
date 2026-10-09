@@ -152,30 +152,46 @@ export class MidiMappingService {
   public loadPreset(presetName: 'hercules' | 'original' | 'pioneer'): void {
     this.mappings.clear();
     if (presetName === 'hercules') {
-      // Official Hercules DJControl Preset (Inpulse / Universal DJ)
+      // Official Hercules DJControl Preset (Inpulse 200/300/500, Universal DJ, Compact)
       DEFAULT_MIDI_MAPPINGS.forEach(entry => {
         const copy = { ...entry };
+        // Deck L Transport & Controls (Hercules Ch 1 = 144 Note On, 176 CC)
+        if (copy.controlId === 'transport_play_l') { copy.status = 144; copy.noteOrCC = 1; copy.isCC = false; }
+        if (copy.controlId === 'transport_cue_l') { copy.status = 144; copy.noteOrCC = 2; copy.isCC = false; }
+        if (copy.controlId === 'deck_sync_l') { copy.status = 144; copy.noteOrCC = 3; copy.isCC = false; }
+        if (copy.controlId === 'deck_cue_pfl_l') { copy.status = 144; copy.noteOrCC = 5; copy.isCC = false; }
+        if (copy.controlId === 'deck_loop_l') { copy.status = 144; copy.noteOrCC = 13; copy.isCC = false; }
         if (copy.controlId === 'fader_volume_l') { copy.status = 176; copy.noteOrCC = 0; copy.isCC = true; }
+        if (copy.controlId === 'deck_pitch_l') { copy.status = 176; copy.noteOrCC = 9; copy.isCC = true; }
+        if (copy.controlId === 'deck_gain_l') { copy.status = 176; copy.noteOrCC = 16; copy.isCC = true; }
+        if (copy.controlId === 'deck_eq_high_l') { copy.status = 176; copy.noteOrCC = 17; copy.isCC = true; }
+        if (copy.controlId === 'deck_eq_mid_l') { copy.status = 176; copy.noteOrCC = 18; copy.isCC = true; }
+        if (copy.controlId === 'deck_eq_low_l') { copy.status = 176; copy.noteOrCC = 19; copy.isCC = true; }
+        if (copy.controlId === 'deck_filter_l') { copy.status = 176; copy.noteOrCC = 23; copy.isCC = true; }
+        if (copy.controlId === 'deck_jog_l') { copy.status = 176; copy.noteOrCC = 33; copy.isCC = true; }
+
+        // Deck R Transport & Controls (Hercules Ch 2 = 145 Note On, 177 CC)
+        if (copy.controlId === 'transport_play_r') { copy.status = 145; copy.noteOrCC = 1; copy.isCC = false; }
+        if (copy.controlId === 'transport_cue_r') { copy.status = 145; copy.noteOrCC = 2; copy.isCC = false; }
+        if (copy.controlId === 'deck_sync_r') { copy.status = 145; copy.noteOrCC = 3; copy.isCC = false; }
+        if (copy.controlId === 'deck_cue_pfl_r') { copy.status = 145; copy.noteOrCC = 5; copy.isCC = false; }
+        if (copy.controlId === 'deck_loop_r') { copy.status = 145; copy.noteOrCC = 13; copy.isCC = false; }
         if (copy.controlId === 'fader_volume_r') { copy.status = 177; copy.noteOrCC = 0; copy.isCC = true; }
+        if (copy.controlId === 'deck_pitch_r') { copy.status = 177; copy.noteOrCC = 9; copy.isCC = true; }
+        if (copy.controlId === 'deck_gain_r') { copy.status = 177; copy.noteOrCC = 16; copy.isCC = true; }
+        if (copy.controlId === 'deck_eq_high_r') { copy.status = 177; copy.noteOrCC = 17; copy.isCC = true; }
+        if (copy.controlId === 'deck_eq_mid_r') { copy.status = 177; copy.noteOrCC = 18; copy.isCC = true; }
+        if (copy.controlId === 'deck_eq_low_r') { copy.status = 177; copy.noteOrCC = 19; copy.isCC = true; }
+        if (copy.controlId === 'deck_filter_r') { copy.status = 177; copy.noteOrCC = 23; copy.isCC = true; }
+        if (copy.controlId === 'deck_jog_r') { copy.status = 177; copy.noteOrCC = 33; copy.isCC = true; }
+
+        // Master & Crossfader
         if (copy.controlId === 'fader_master') { copy.status = 176; copy.noteOrCC = 7; copy.isCC = true; }
         if (copy.controlId === 'fader_crossfader') { copy.status = 176; copy.noteOrCC = 8; copy.isCC = true; }
-        if (copy.controlId === 'deck_gain_l') { copy.status = 176; copy.noteOrCC = 16; copy.isCC = true; }
-        if (copy.controlId === 'deck_gain_r') { copy.status = 177; copy.noteOrCC = 16; copy.isCC = true; }
-        if (copy.controlId === 'deck_eq_high_l') { copy.status = 176; copy.noteOrCC = 17; copy.isCC = true; }
-        if (copy.controlId === 'deck_eq_high_r') { copy.status = 177; copy.noteOrCC = 17; copy.isCC = true; }
-        if (copy.controlId === 'deck_eq_mid_l') { copy.status = 176; copy.noteOrCC = 18; copy.isCC = true; }
-        if (copy.controlId === 'deck_eq_mid_r') { copy.status = 177; copy.noteOrCC = 18; copy.isCC = true; }
-        if (copy.controlId === 'deck_eq_low_l') { copy.status = 176; copy.noteOrCC = 19; copy.isCC = true; }
-        if (copy.controlId === 'deck_eq_low_r') { copy.status = 177; copy.noteOrCC = 19; copy.isCC = true; }
-        if (copy.controlId === 'deck_filter_l') { copy.status = 176; copy.noteOrCC = 23; copy.isCC = true; }
-        if (copy.controlId === 'deck_filter_r') { copy.status = 177; copy.noteOrCC = 23; copy.isCC = true; }
-        if (copy.controlId === 'deck_pitch_l') { copy.status = 176; copy.noteOrCC = 9; copy.isCC = true; }
-        if (copy.controlId === 'deck_pitch_r') { copy.status = 177; copy.noteOrCC = 9; copy.isCC = true; }
-        if (copy.controlId === 'deck_jog_l') { copy.status = 176; copy.noteOrCC = 33; copy.isCC = true; }
-        if (copy.controlId === 'deck_jog_r') { copy.status = 177; copy.noteOrCC = 33; copy.isCC = true; }
         this.mappings.set(copy.controlId, copy);
       });
     } else {
+      // Original Soundboard preset (Exact mapping from first code)
       DEFAULT_MIDI_MAPPINGS.forEach(entry => {
         this.mappings.set(entry.controlId, { ...entry });
       });
@@ -215,19 +231,98 @@ export class MidiMappingService {
   }
 
   public findControlByMidi(status: number, noteOrCC: number): MidiMappingEntry | undefined {
-    const isCC = status >= 176 && status <= 191;
+    // 1. Direct exact match
     for (const entry of this.mappings.values()) {
       if (entry.status === status && entry.noteOrCC === noteOrCC) {
         return entry;
       }
     }
-    // Also check generic channel match for Note On (144..159) or CC (176..191)
-    for (const entry of this.mappings.values()) {
-      const entryIsCC = entry.status >= 176 && entry.status <= 191;
-      if (isCC === entryIsCC && entry.noteOrCC === noteOrCC) {
-        return entry;
+
+    const isCC = status >= 176 && status <= 191;
+    const channel = (status & 0x0f) + 1;
+
+    // 2. Official Hercules DJ & Standard Controller Smart Matching
+    if (!isCC) {
+      // NOTE ON / NOTE OFF
+      // Deck 1 (Left / Stânga) on Channel 1 or 2 (status 144 or 145)
+      if (channel === 1 || status === 144 || status === 145) {
+        if (noteOrCC === 1 || noteOrCC === 7 || noteOrCC === 33) {
+          return this.mappings.get('transport_play_l');
+        }
+        if (noteOrCC === 2 || noteOrCC === 6 || noteOrCC === 34) {
+          return this.mappings.get('transport_cue_l');
+        }
+        if (noteOrCC === 3 || noteOrCC === 9 || noteOrCC === 35) {
+          return this.mappings.get('deck_sync_l');
+        }
+        if (noteOrCC === 5 || noteOrCC === 24 || noteOrCC === 41) {
+          return this.mappings.get('deck_cue_pfl_l');
+        }
+        if (noteOrCC === 13 || noteOrCC === 27) {
+          return this.mappings.get('deck_loop_l');
+        }
+        if (noteOrCC === 8 || noteOrCC === 10 || noteOrCC === 50) {
+          return this.mappings.get('fx_active');
+        }
+        // Hot Cues 1-4
+        if (noteOrCC === 16 || noteOrCC === 20 || noteOrCC === 29 || noteOrCC === 36) return this.mappings.get('deck_hotcue_1_l');
+        if (noteOrCC === 17 || noteOrCC === 21 || noteOrCC === 30 || noteOrCC === 37) return this.mappings.get('deck_hotcue_2_l');
+        if (noteOrCC === 18 || noteOrCC === 22 || noteOrCC === 31 || noteOrCC === 38) return this.mappings.get('deck_hotcue_3_l');
+        if (noteOrCC === 19 || noteOrCC === 23 || noteOrCC === 32 || noteOrCC === 39) return this.mappings.get('deck_hotcue_4_l');
+      }
+
+      // Deck 2 (Right / Dreapta) on Channel 2 or 3 (status 145 or 146)
+      if (channel === 2 || status === 145 || status === 146) {
+        if (noteOrCC === 1 || noteOrCC === 7 || noteOrCC === 33) {
+          return this.mappings.get('transport_play_r');
+        }
+        if (noteOrCC === 2 || noteOrCC === 6 || noteOrCC === 34) {
+          return this.mappings.get('transport_cue_r');
+        }
+        if (noteOrCC === 3 || noteOrCC === 9 || noteOrCC === 35) {
+          return this.mappings.get('deck_sync_r');
+        }
+        if (noteOrCC === 5 || noteOrCC === 24 || noteOrCC === 41) {
+          return this.mappings.get('deck_cue_pfl_r');
+        }
+        if (noteOrCC === 13 || noteOrCC === 27) {
+          return this.mappings.get('deck_loop_r');
+        }
+        if (noteOrCC === 8 || noteOrCC === 10 || noteOrCC === 50) {
+          return this.mappings.get('fx_active');
+        }
+        // Hot Cues 1-4
+        if (noteOrCC === 16 || noteOrCC === 20 || noteOrCC === 46 || noteOrCC === 36) return this.mappings.get('deck_hotcue_1_r');
+        if (noteOrCC === 17 || noteOrCC === 21 || noteOrCC === 47 || noteOrCC === 37) return this.mappings.get('deck_hotcue_2_r');
+        if (noteOrCC === 18 || noteOrCC === 22 || noteOrCC === 48 || noteOrCC === 38) return this.mappings.get('deck_hotcue_3_r');
+        if (noteOrCC === 19 || noteOrCC === 23 || noteOrCC === 49 || noteOrCC === 39) return this.mappings.get('deck_hotcue_4_r');
+      }
+    } else {
+      // CC (Control Change)
+      if (channel === 1 || status === 176) {
+        if (noteOrCC === 0 || noteOrCC === 1) return this.mappings.get('fader_volume_l');
+        if (noteOrCC === 7) return this.mappings.get('fader_master');
+        if (noteOrCC === 8) return this.mappings.get('fader_crossfader');
+        if (noteOrCC === 9 || noteOrCC === 25) return this.mappings.get('deck_pitch_l');
+        if (noteOrCC === 16 || noteOrCC === 26) return this.mappings.get('deck_gain_l');
+        if (noteOrCC === 17 || noteOrCC === 20) return this.mappings.get('deck_eq_high_l');
+        if (noteOrCC === 18 || noteOrCC === 21) return this.mappings.get('deck_eq_mid_l');
+        if (noteOrCC === 19 || noteOrCC === 22) return this.mappings.get('deck_eq_low_l');
+        if (noteOrCC === 23 || noteOrCC === 24) return this.mappings.get('deck_filter_l');
+        if (noteOrCC === 33 || noteOrCC === 34 || noteOrCC === 48 || noteOrCC === 56 || noteOrCC === 28) return this.mappings.get('deck_jog_l');
+      }
+      if (channel === 2 || status === 177) {
+        if (noteOrCC === 0 || noteOrCC === 2) return this.mappings.get('fader_volume_r');
+        if (noteOrCC === 9 || noteOrCC === 42) return this.mappings.get('deck_pitch_r');
+        if (noteOrCC === 16 || noteOrCC === 26) return this.mappings.get('deck_gain_r');
+        if (noteOrCC === 17 || noteOrCC === 20) return this.mappings.get('deck_eq_high_r');
+        if (noteOrCC === 18 || noteOrCC === 21) return this.mappings.get('deck_eq_mid_r');
+        if (noteOrCC === 19 || noteOrCC === 22) return this.mappings.get('deck_eq_low_r');
+        if (noteOrCC === 23 || noteOrCC === 24) return this.mappings.get('deck_filter_r');
+        if (noteOrCC === 33 || noteOrCC === 34 || noteOrCC === 45 || noteOrCC === 48 || noteOrCC === 56) return this.mappings.get('deck_jog_r');
       }
     }
+
     return undefined;
   }
 }

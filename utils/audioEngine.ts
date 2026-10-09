@@ -46,7 +46,10 @@ class AudioEngine {
   // Active playing sound nodes (for Jingles and Samples)
   private activeSoundSources: Map<string, { source: AudioBufferSourceNode; gain: GainNode }> = new Map();
 
-  // Crossfader state
+  // Persistent volume, gain and crossfader state
+  private deckVolumes: { L: number; R: number } = { L: 0.9, R: 0.9 };
+  private deckGains: { L: number; R: number } = { L: 1.0, R: 1.0 };
+  private masterVolumeVal: number = 0.9;
   private crossfaderVal = 0; // -1 to +1
   private crossfaderCurve: 'smooth' | 'scratch' = 'smooth';
 
@@ -67,7 +70,7 @@ class AudioEngine {
 
     // Master bus
     this.masterGain = ctx.createGain();
-    this.masterGain.gain.setValueAtTime(0.9, ctx.currentTime);
+    this.masterGain.gain.setValueAtTime(this.masterVolumeVal, ctx.currentTime);
 
     this.masterCompressor = ctx.createDynamicsCompressor();
     this.masterCompressor.threshold.setValueAtTime(-1.5, ctx.currentTime);
@@ -102,6 +105,7 @@ class AudioEngine {
     this.fxDryGain.gain.setValueAtTime(1, ctx.currentTime);
 
     this.fxDelay.connect(this.fxWetGain);
+    this.fxWetGain.connect(this.masterGain);
 
     // Connect Master chain
     this.masterGain.connect(this.masterCompressor);
@@ -133,7 +137,7 @@ class AudioEngine {
       colorFilter.frequency.setValueAtTime(1000, ctx.currentTime);
 
       const gainNode = ctx.createGain();
-      gainNode.gain.setValueAtTime(0.9, ctx.currentTime);
+      gainNode.gain.setValueAtTime(this.deckVolumes[deckId], ctx.currentTime);
 
       const crossfaderGain = ctx.createGain();
       crossfaderGain.gain.setValueAtTime(1.0, ctx.currentTime);
@@ -183,7 +187,7 @@ class AudioEngine {
 
   // --- DECK TRANSPORT & CONTROLS ---
 
-  public playDeck(deckId: 'L' | 'R', onEnded?: () => void) {
+  public playDeck(deckId: 'L' | 'R', onEnded?: () => void, isLooping = false) {
     this.init();
     const ctx = this.getContext();
     const deck = this.deckNodes[deckId];
@@ -191,14 +195,22 @@ class AudioEngine {
 
     if (deck.isPlaying) return;
 
+    // Strict volume enforcement: immediately apply current fader volume!
+    // If fader is down (<=0.01), gain is STRICTLY 0!
+    const effectiveVol = this.deckVolumes[deckId] <= 0.01 ? 0 : this.deckVolumes[deckId];
+    deck.gainNode.gain.cancelScheduledValues(ctx.currentTime);
+    deck.gainNode.gain.setValueAtTime(effectiveVol, ctx.currentTime);
+    this.updateCrossfaderGains();
+
     const source = ctx.createBufferSource();
     source.buffer = deck.buffer;
-    source.loop = true;
+    source.loop = isLooping;
     source.playbackRate.setValueAtTime(deck.playbackRate, ctx.currentTime);
 
     source.connect(deck.trimGain);
 
-    const offset = deck.pauseOffset % deck.buffer.duration;
+    const dur = deck.buffer.duration;
+    const offset = Math.min(dur - 0.01, Math.max(0, deck.pauseOffset % dur));
     source.start(0, offset);
     deck.startTime = ctx.currentTime - offset / deck.playbackRate;
     deck.source = source;
@@ -206,8 +218,50 @@ class AudioEngine {
 
     source.onended = () => {
       deck.isPlaying = false;
+      // When non-looping track finishes, reset position to beginning
+      if (!isLooping) {
+        deck.pauseOffset = 0;
+      }
       if (onEnded) onEnded();
     };
+  }
+
+  public scratchDeck(deckId: 'L' | 'R', deltaSeconds: number, isLooping = false) {
+    this.init();
+    const deck = this.deckNodes[deckId];
+    if (!deck || !deck.buffer) return;
+    const dur = deck.buffer.duration;
+    const cur = this.getDeckCurrentTime(deckId);
+    const newTime = Math.max(0, Math.min(dur - 0.05, cur + deltaSeconds));
+    deck.pauseOffset = newTime;
+
+    if (deck.isPlaying) {
+      this.pauseDeck(deckId);
+      this.playDeck(deckId, undefined, isLooping);
+    }
+  }
+
+  public async getAudioOutputDevices(): Promise<MediaDeviceInfo[]> {
+    if (typeof navigator === 'undefined' || !navigator.mediaDevices?.enumerateDevices) return [];
+    try {
+      const devices = await navigator.mediaDevices.enumerateDevices();
+      return devices.filter(d => d.kind === 'audiooutput');
+    } catch {
+      return [];
+    }
+  }
+
+  public async setAudioOutputDevice(deviceId: string): Promise<boolean> {
+    const ctx = this.getContext() as unknown as { setSinkId?: (id: string) => Promise<void> };
+    if (typeof ctx.setSinkId === 'function') {
+      try {
+        await ctx.setSinkId(deviceId);
+        return true;
+      } catch (err) {
+        console.warn('AudioContext setSinkId error:', err);
+      }
+    }
+    return false;
   }
 
   public pauseDeck(deckId: 'L' | 'R') {
@@ -229,6 +283,7 @@ class AudioEngine {
   }
 
   public cueDeck(deckId: 'L' | 'R', cueTime: number = 0) {
+    this.init();
     const deck = this.deckNodes[deckId];
     if (!deck) return;
 
@@ -243,10 +298,17 @@ class AudioEngine {
       deck.source = null;
       deck.isPlaying = false;
     }
-    deck.pauseOffset = cueTime;
+    deck.pauseOffset = Math.max(0, cueTime);
+  }
+
+  public playDeckFromCue(deckId: 'L' | 'R', cueTime: number = 0, onEnded?: () => void) {
+    this.init();
+    this.cueDeck(deckId, cueTime);
+    this.playDeck(deckId, onEnded);
   }
 
   public scrubDeck(deckId: 'L' | 'R', targetSeconds: number) {
+    this.init();
     const deck = this.deckNodes[deckId];
     if (!deck || !deck.buffer) return;
     const clamped = Math.max(0, Math.min(deck.buffer.duration, targetSeconds));
@@ -259,6 +321,7 @@ class AudioEngine {
   }
 
   public setDeckPitch(deckId: 'L' | 'R', pitchPercent: number) {
+    this.init();
     const deck = this.deckNodes[deckId];
     if (!deck) return;
 
@@ -272,6 +335,7 @@ class AudioEngine {
   }
 
   public setDeckBuffer(deckId: 'L' | 'R', buffer: AudioBuffer) {
+    this.init();
     const deck = this.deckNodes[deckId];
     if (!deck) return;
 
@@ -340,9 +404,15 @@ class AudioEngine {
   }
 
   public setDeckVolume(deckId: 'L' | 'R', volume: number) {
+    const clamped = Math.max(0, Math.min(1.2, volume));
+    // When fader is down (<= 0.01), ensure STRICT 0.0 mute
+    const effective = clamped <= 0.01 ? 0 : clamped;
+    this.deckVolumes[deckId] = effective;
     const deck = this.deckNodes[deckId];
-    if (!deck || !this.ctx) return;
-    deck.gainNode.gain.setValueAtTime(Math.max(0, Math.min(1.2, volume)), this.ctx.currentTime);
+    if (deck && this.ctx) {
+      deck.gainNode.gain.cancelScheduledValues(this.ctx.currentTime);
+      deck.gainNode.gain.setValueAtTime(effective, this.ctx.currentTime);
+    }
   }
 
   // --- CROSSFADER ---
@@ -383,6 +453,15 @@ class AudioEngine {
       }
     }
 
+    // Cut completely if at extreme ends
+    if (x <= -0.99) {
+      gainL = 1;
+      gainR = 0;
+    } else if (x >= 0.99) {
+      gainL = 0;
+      gainR = 1;
+    }
+
     deckL.crossfaderGain.gain.setValueAtTime(gainL, this.ctx.currentTime);
     deckR.crossfaderGain.gain.setValueAtTime(gainR, this.ctx.currentTime);
   }
@@ -390,8 +469,12 @@ class AudioEngine {
   // --- MASTER & FX ---
 
   public setMasterVolume(val: number) {
-    if (!this.masterGain || !this.ctx) return;
-    this.masterGain.gain.setValueAtTime(Math.max(0, Math.min(1.5, val)), this.ctx.currentTime);
+    const clamped = Math.max(0, Math.min(1.5, val));
+    const effective = clamped <= 0.01 ? 0 : clamped;
+    this.masterVolumeVal = effective;
+    if (this.masterGain && this.ctx) {
+      this.masterGain.gain.setValueAtTime(effective, this.ctx.currentTime);
+    }
   }
 
   public setFx(active: boolean, type: string, wet: number, param: number) {

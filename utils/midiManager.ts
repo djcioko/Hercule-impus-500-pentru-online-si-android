@@ -109,6 +109,31 @@ class MidiManager {
       this.listeners.delete(cb);
     };
   }
+
+  public sendMidiMessage(status: number, note: number, velocity: number) {
+    if (!this.midiAccess) return;
+    for (const output of this.midiAccess.outputs.values()) {
+      try {
+        output.send([status, note, velocity]);
+      } catch (err) {
+        // ignore
+      }
+    }
+  }
+
+  public sendDeckPflFeedback(deckId: 'L' | 'R', isActive: boolean) {
+    // Hercules Inpulse / Universal DJ headphone PFL LEDs:
+    // Deck L: Ch 1 Note 5 (0x90 0x05) or Note 24
+    // Deck R: Ch 2 Note 5 (0x91 0x05) or Note 41
+    const velocity = isActive ? 127 : 0;
+    if (deckId === 'L') {
+      this.sendMidiMessage(144, 5, velocity);
+      this.sendMidiMessage(144, 24, velocity);
+    } else {
+      this.sendMidiMessage(145, 5, velocity);
+      this.sendMidiMessage(145, 24, velocity);
+    }
+  }
 }
 
 export const midiManager = new MidiManager();

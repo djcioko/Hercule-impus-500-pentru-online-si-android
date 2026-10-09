@@ -18,6 +18,8 @@ import { JinglesMatrix } from './components/dj/JinglesMatrix';
 import { MidiNotepadModal } from './components/dj/MidiNotepadModal';
 import { AudioSourcesModal } from './components/dj/AudioSourcesModal';
 import { AiDjSection } from './components/dj/AiDjSection';
+import { MusicExplorerSection } from './components/dj/MusicExplorerSection';
+import { AndroidConsoleView } from './components/dj/AndroidConsoleView';
 
 import { geminiService } from './services/geminiService';
 import { fileToBase64 } from './utils/imageUtils';
@@ -25,8 +27,9 @@ import { YoutubeSong, HistoryEntry, GeminiResponseData } from './types';
 import { YOUTUBE_DB, DEFAULT_YOUTUBE_ID, LOCAL_STORAGE_HISTORY_KEY } from './constants';
 
 const App: React.FC = () => {
-  // Navigation View
-  const [activeView, setActiveView] = useState<'decks' | 'samples' | 'jingles' | 'full' | 'ai'>('decks');
+  // Navigation View (Includes Explorer & Mobile Android Console)
+  const [activeView, setActiveView] = useState<'decks' | 'samples' | 'jingles' | 'full' | 'ai' | 'explorer' | 'android'>('decks');
+  const [trackEndMode, setTrackEndMode] = useState<'stop' | 'loop' | 'next'>('stop');
 
   // MIDI state & Ableton-style MIDI Edit Mode
   const [midiStatus, setMidiStatus] = useState<MidiStatusType>('disconnected');
@@ -151,6 +154,10 @@ const App: React.FC = () => {
   deckLRef.current = deckL;
   deckRRef.current = deckR;
 
+  // Track if CUE is being held for temporary cue-preview
+  const cueHeldLRef = useRef(false);
+  const cueHeldRRef = useRef(false);
+
   // Load history from localStorage on mount
   useEffect(() => {
     try {
@@ -206,33 +213,132 @@ const App: React.FC = () => {
       audioEngine.pauseDeck('L');
       setDeckL(prev => ({ ...prev, isPlaying: false }));
     } else {
-      audioEngine.playDeck('L', () => {
-        setDeckL(prev => ({ ...prev, isPlaying: false }));
-      });
+      const isLoop = trackEndMode === 'loop' || deckLRef.current.isLooping;
+      audioEngine.playDeck(
+        'L',
+        () => {
+          // When track reaches end: "CAND DECK UNUL SAU DECK DOI AJUNGE LA FINAL PIESA SE OPRESTE NU MAI CANTA"
+          if (trackEndMode === 'stop') {
+            audioEngine.cueDeck('L', 0);
+            setDeckL(prev => ({ ...prev, isPlaying: false, currentTime: 0 }));
+          } else if (trackEndMode === 'loop') {
+            audioEngine.playDeck('L', undefined, true);
+          }
+        },
+        isLoop
+      );
       setDeckL(prev => ({ ...prev, isPlaying: true }));
     }
-  }, []);
+  }, [trackEndMode]);
 
   const handlePlayDeckR = useCallback(() => {
     if (deckRRef.current.isPlaying) {
       audioEngine.pauseDeck('R');
       setDeckR(prev => ({ ...prev, isPlaying: false }));
     } else {
-      audioEngine.playDeck('R', () => {
-        setDeckR(prev => ({ ...prev, isPlaying: false }));
-      });
+      const isLoop = trackEndMode === 'loop' || deckRRef.current.isLooping;
+      audioEngine.playDeck(
+        'R',
+        () => {
+          if (trackEndMode === 'stop') {
+            audioEngine.cueDeck('R', 0);
+            setDeckR(prev => ({ ...prev, isPlaying: false, currentTime: 0 }));
+          } else if (trackEndMode === 'loop') {
+            audioEngine.playDeck('R', undefined, true);
+          }
+        },
+        isLoop
+      );
       setDeckR(prev => ({ ...prev, isPlaying: true }));
+    }
+  }, [trackEndMode]);
+
+  const handleJogScratch = useCallback((deckId: 'L' | 'R', deltaSeconds: number) => {
+    const target = deckId === 'L' ? deckLRef.current : deckRRef.current;
+    audioEngine.scratchDeck(deckId, deltaSeconds, target.isLooping);
+    const newTime = audioEngine.getDeckCurrentTime(deckId);
+    if (deckId === 'L') setDeckL(p => ({ ...p, currentTime: newTime }));
+    else setDeckR(p => ({ ...p, currentTime: newTime }));
+  }, []);
+
+  const handleDeckCueMonitorToggle = useCallback((deckId: 'L' | 'R') => {
+    if (deckId === 'L') {
+      setDeckL(p => {
+        const next = !p.cueMonitor;
+        midiManager.sendDeckPflFeedback('L', next);
+        return { ...p, cueMonitor: next };
+      });
+    } else {
+      setDeckR(p => {
+        const next = !p.cueMonitor;
+        midiManager.sendDeckPflFeedback('R', next);
+        return { ...p, cueMonitor: next };
+      });
     }
   }, []);
 
-  const handleCueDeckL = useCallback(() => {
-    audioEngine.cueDeck('L', deckLRef.current.cuePoint);
-    setDeckL(prev => ({ ...prev, isPlaying: false, currentTime: prev.cuePoint }));
+  const handleCueDeckL = useCallback((isHold = false) => {
+    audioEngine.init();
+    if (deckLRef.current.isPlaying) {
+      // 1. Deck is playing -> Stop and snap back to cuePoint (standard CDJ/Hercules behavior)
+      audioEngine.cueDeck('L', deckLRef.current.cuePoint);
+      setDeckL(prev => ({ ...prev, isPlaying: false, currentTime: prev.cuePoint }));
+      cueHeldLRef.current = false;
+    } else {
+      // 2. Deck is stopped -> Play from cue point immediately (soundboard trigger & cue preview)!
+      audioEngine.playDeckFromCue('L', deckLRef.current.cuePoint, () => {
+        setDeckL(prev => ({ ...prev, isPlaying: false }));
+      });
+      setDeckL(prev => ({ ...prev, isPlaying: true, currentTime: prev.cuePoint }));
+      if (isHold) {
+        cueHeldLRef.current = true;
+      }
+    }
   }, []);
 
-  const handleCueDeckR = useCallback(() => {
-    audioEngine.cueDeck('R', deckRRef.current.cuePoint);
-    setDeckR(prev => ({ ...prev, isPlaying: false, currentTime: prev.cuePoint }));
+  const handleCueDeckLRelease = useCallback(() => {
+    if (cueHeldLRef.current) {
+      cueHeldLRef.current = false;
+      audioEngine.cueDeck('L', deckLRef.current.cuePoint);
+      setDeckL(prev => ({ ...prev, isPlaying: false, currentTime: prev.cuePoint }));
+    }
+  }, []);
+
+  const handleSetCueDeckL = useCallback(() => {
+    const cur = deckLRef.current.currentTime;
+    setDeckL(prev => ({ ...prev, cuePoint: cur }));
+  }, []);
+
+  const handleCueDeckR = useCallback((isHold = false) => {
+    audioEngine.init();
+    if (deckRRef.current.isPlaying) {
+      // 1. Deck is playing -> Stop and snap back to cuePoint
+      audioEngine.cueDeck('R', deckRRef.current.cuePoint);
+      setDeckR(prev => ({ ...prev, isPlaying: false, currentTime: prev.cuePoint }));
+      cueHeldRRef.current = false;
+    } else {
+      // 2. Deck is stopped -> Play from cue point immediately
+      audioEngine.playDeckFromCue('R', deckRRef.current.cuePoint, () => {
+        setDeckR(prev => ({ ...prev, isPlaying: false }));
+      });
+      setDeckR(prev => ({ ...prev, isPlaying: true, currentTime: prev.cuePoint }));
+      if (isHold) {
+        cueHeldRRef.current = true;
+      }
+    }
+  }, []);
+
+  const handleCueDeckRRelease = useCallback(() => {
+    if (cueHeldRRef.current) {
+      cueHeldRRef.current = false;
+      audioEngine.cueDeck('R', deckRRef.current.cuePoint);
+      setDeckR(prev => ({ ...prev, isPlaying: false, currentTime: prev.cuePoint }));
+    }
+  }, []);
+
+  const handleSetCueDeckR = useCallback(() => {
+    const cur = deckRRef.current.currentTime;
+    setDeckR(prev => ({ ...prev, cuePoint: cur }));
   }, []);
 
   // --- STOP ALL HANDLER ---
@@ -377,8 +483,10 @@ const App: React.FC = () => {
 
   // --- MIXER PARAMETERS ADJUSTMENTS ---
   const handleMasterVolumeChange = useCallback((vol: number) => {
-    audioEngine.setMasterVolume(vol);
-    setMixer(prev => ({ ...prev, masterVolume: vol }));
+    const clamped = Math.max(0, Math.min(1.5, vol));
+    const effective = clamped <= 0.01 ? 0 : clamped;
+    audioEngine.setMasterVolume(effective);
+    setMixer(prev => ({ ...prev, masterVolume: effective }));
   }, []);
 
   const handleCrossfaderChange = useCallback((val: number) => {
@@ -451,9 +559,11 @@ const App: React.FC = () => {
   }, []);
 
   const handleDeckVolumeChange = useCallback((deckId: 'L' | 'R', val: number) => {
-    audioEngine.setDeckVolume(deckId, val);
-    if (deckId === 'L') setDeckL(prev => ({ ...prev, volume: val }));
-    else setDeckR(prev => ({ ...prev, volume: val }));
+    const clamped = Math.max(0, Math.min(1.2, val));
+    const effective = clamped <= 0.01 ? 0 : clamped;
+    audioEngine.setDeckVolume(deckId, effective);
+    if (deckId === 'L') setDeckL(prev => ({ ...prev, volume: effective }));
+    else setDeckR(prev => ({ ...prev, volume: effective }));
   }, []);
 
   const handleDeckPitchChange = useCallback((deckId: 'L' | 'R', val: number) => {
@@ -535,8 +645,16 @@ const App: React.FC = () => {
         return;
       }
 
-      // If Note Off (velocity === 0), ignore trigger actions
-      if (!isCC && velocity === 0) return;
+      // If Note Off (velocity === 0), handle release for CUE preview
+      if (!isCC && velocity === 0) {
+        const offMapping = midiMappingService.findControlByMidi(status, note);
+        if (offMapping?.controlId === 'transport_cue_l') {
+          handleCueDeckLRelease();
+        } else if (offMapping?.controlId === 'transport_cue_r') {
+          handleCueDeckRRelease();
+        }
+        return;
+      }
 
       // 2. Lookup mapping in MidiMappingService
       const mapping = midiMappingService.findControlByMidi(status, note);
@@ -552,10 +670,10 @@ const App: React.FC = () => {
             handlePlayDeckR();
             return;
           case 'transport_cue_l':
-            handleCueDeckL();
+            handleCueDeckL(true);
             return;
           case 'transport_cue_r':
-            handleCueDeckR();
+            handleCueDeckR(true);
             return;
           case 'transport_stop_all':
             handleStopAll();
@@ -607,7 +725,7 @@ const App: React.FC = () => {
             handleDeckFilterChange('L', normVal * 2 - 1);
             return;
           case 'deck_cue_pfl_l':
-            setDeckL(p => ({ ...p, cueMonitor: !p.cueMonitor }));
+            handleDeckCueMonitorToggle('L');
             return;
           case 'deck_pitch_l':
             handleDeckPitchChange('L', normVal * 32 - 16);
@@ -618,9 +736,11 @@ const App: React.FC = () => {
           case 'deck_loop_l':
             setDeckL(p => ({ ...p, isLooping: !p.isLooping }));
             return;
-          case 'deck_jog_l':
-            audioEngine.scrubDeck('L', deckLRef.current.currentTime + (normVal - 0.5) * 2);
+          case 'deck_jog_l': {
+            const delta = velocity >= 64 ? (velocity - 128) * 0.04 : velocity * 0.04;
+            handleJogScratch('L', delta);
             return;
+          }
           case 'deck_hotcue_1_l':
           case 'deck_hotcue_2_l':
           case 'deck_hotcue_3_l':
@@ -657,7 +777,7 @@ const App: React.FC = () => {
             handleDeckFilterChange('R', normVal * 2 - 1);
             return;
           case 'deck_cue_pfl_r':
-            setDeckR(p => ({ ...p, cueMonitor: !p.cueMonitor }));
+            handleDeckCueMonitorToggle('R');
             return;
           case 'deck_pitch_r':
             handleDeckPitchChange('R', normVal * 32 - 16);
@@ -668,9 +788,11 @@ const App: React.FC = () => {
           case 'deck_loop_r':
             setDeckR(p => ({ ...p, isLooping: !p.isLooping }));
             return;
-          case 'deck_jog_r':
-            audioEngine.scrubDeck('R', deckRRef.current.currentTime + (normVal - 0.5) * 2);
+          case 'deck_jog_r': {
+            const delta = velocity >= 64 ? (velocity - 128) * 0.04 : velocity * 0.04;
+            handleJogScratch('R', delta);
             return;
+          }
           case 'deck_hotcue_1_r':
           case 'deck_hotcue_2_r':
           case 'deck_hotcue_3_r':
@@ -719,7 +841,9 @@ const App: React.FC = () => {
       handlePlayDeckL,
       handlePlayDeckR,
       handleCueDeckL,
+      handleCueDeckLRelease,
       handleCueDeckR,
+      handleCueDeckRRelease,
       handleStopAll,
       handleToggleRecording,
       handleDeckVolumeChange,
@@ -768,33 +892,34 @@ const App: React.FC = () => {
       if (e.repeat) return;
 
       const key = e.key.toLowerCase();
+      const code = e.code;
 
       // STOP ALL (Space or Escape)
-      if (key === ' ' || key === 'escape') {
+      if (key === ' ' || key === 'escape' || code === 'Space' || code === 'Escape') {
         e.preventDefault();
         handleStopAll();
         return;
       }
 
       // Transport controls
-      if (key === 'z') {
+      if (key === 'z' || code === 'KeyZ') {
         e.preventDefault();
         handlePlayDeckL();
         return;
       }
-      if (key === 'x') {
+      if (key === 'x' || code === 'KeyX') {
         e.preventDefault();
         handlePlayDeckR();
         return;
       }
-      if (key === 'c') {
+      if (key === 'c' || code === 'KeyC') {
         e.preventDefault();
-        handleCueDeckL();
+        handleCueDeckL(true);
         return;
       }
-      if (key === 'v') {
+      if (key === 'v' || code === 'KeyV') {
         e.preventDefault();
-        handleCueDeckR();
+        handleCueDeckR(true);
         return;
       }
 
@@ -823,14 +948,38 @@ const App: React.FC = () => {
       }
     };
 
+    const handleKeyUp = (e: KeyboardEvent) => {
+      if (['INPUT', 'TEXTAREA'].includes((e.target as HTMLElement)?.tagName)) return;
+      const key = e.key.toLowerCase();
+      const code = e.code;
+
+      // Release CUE preview on key release
+      if (key === 'c' || code === 'KeyC') {
+        e.preventDefault();
+        handleCueDeckLRelease();
+        return;
+      }
+      if (key === 'v' || code === 'KeyV') {
+        e.preventDefault();
+        handleCueDeckRRelease();
+        return;
+      }
+    };
+
     window.addEventListener('keydown', handleKeyDown);
-    return () => window.removeEventListener('keydown', handleKeyDown);
+    window.addEventListener('keyup', handleKeyUp);
+    return () => {
+      window.removeEventListener('keydown', handleKeyDown);
+      window.removeEventListener('keyup', handleKeyUp);
+    };
   }, [
     handleStopAll,
     handlePlayDeckL,
     handlePlayDeckR,
     handleCueDeckL,
+    handleCueDeckLRelease,
     handleCueDeckR,
+    handleCueDeckRRelease,
     handleTriggerSampleL,
     handleTriggerSampleR,
     handleTriggerJingle,
@@ -944,7 +1093,14 @@ const App: React.FC = () => {
               onSelectMidiControl={id => setSelectedMidiControl(id)}
               onPlayToggle={handlePlayDeckL}
               onCue={handleCueDeckL}
-              onScrub={sec => audioEngine.scrubDeck('L', sec)}
+              onCueHoldStart={() => handleCueDeckL(true)}
+              onCueHoldEnd={handleCueDeckLRelease}
+              onSetCuePoint={handleSetCueDeckL}
+              onVolumeChange={val => handleDeckVolumeChange('L', val)}
+              onScrub={sec => {
+                audioEngine.scrubDeck('L', sec);
+                setDeckL(p => ({ ...p, currentTime: sec }));
+              }}
               onPitchChange={p => handleDeckPitchChange('L', p)}
               onPitchBend={amt => handleDeckPitchBend('L', amt)}
               onSync={() => handleSyncDecks('L')}
@@ -960,6 +1116,7 @@ const App: React.FC = () => {
                 const target = deckL.hotCues[idx];
                 if (target !== null && target !== undefined) {
                   audioEngine.scrubDeck('L', target);
+                  setDeckL(p => ({ ...p, currentTime: target }));
                 }
               }}
               onSetLoop={beats => setDeckL(p => ({ ...p, loopLength: beats, isLooping: true }))}
@@ -983,10 +1140,7 @@ const App: React.FC = () => {
               onDeckEQKillToggle={handleDeckEQKillToggle}
               onDeckFilterChange={handleDeckFilterChange}
               onDeckVolumeChange={handleDeckVolumeChange}
-              onDeckCueMonitorToggle={deckId => {
-                if (deckId === 'L') setDeckL(p => ({ ...p, cueMonitor: !p.cueMonitor }));
-                else setDeckR(p => ({ ...p, cueMonitor: !p.cueMonitor }));
-              }}
+              onDeckCueMonitorToggle={handleDeckCueMonitorToggle}
               onCrossfaderChange={handleCrossfaderChange}
               onCrossfaderCurveToggle={handleCrossfaderCurveToggle}
               onFxChange={handleFxChange}
@@ -1002,7 +1156,14 @@ const App: React.FC = () => {
               onSelectMidiControl={id => setSelectedMidiControl(id)}
               onPlayToggle={handlePlayDeckR}
               onCue={handleCueDeckR}
-              onScrub={sec => audioEngine.scrubDeck('R', sec)}
+              onCueHoldStart={() => handleCueDeckR(true)}
+              onCueHoldEnd={handleCueDeckRRelease}
+              onSetCuePoint={handleSetCueDeckR}
+              onVolumeChange={val => handleDeckVolumeChange('R', val)}
+              onScrub={sec => {
+                audioEngine.scrubDeck('R', sec);
+                setDeckR(p => ({ ...p, currentTime: sec }));
+              }}
               onPitchChange={p => handleDeckPitchChange('R', p)}
               onPitchBend={amt => handleDeckPitchBend('R', amt)}
               onSync={() => handleSyncDecks('R')}
@@ -1018,6 +1179,7 @@ const App: React.FC = () => {
                 const target = deckR.hotCues[idx];
                 if (target !== null && target !== undefined) {
                   audioEngine.scrubDeck('R', target);
+                  setDeckR(p => ({ ...p, currentTime: target }));
                 }
               }}
               onSetLoop={beats => setDeckR(p => ({ ...p, loopLength: beats, isLooping: true }))}
@@ -1147,7 +1309,14 @@ const App: React.FC = () => {
                 onSelectMidiControl={id => setSelectedMidiControl(id)}
                 onPlayToggle={handlePlayDeckL}
                 onCue={handleCueDeckL}
-                onScrub={sec => audioEngine.scrubDeck('L', sec)}
+                onCueHoldStart={() => handleCueDeckL(true)}
+                onCueHoldEnd={handleCueDeckLRelease}
+                onSetCuePoint={handleSetCueDeckL}
+                onVolumeChange={val => handleDeckVolumeChange('L', val)}
+                onScrub={sec => {
+                  audioEngine.scrubDeck('L', sec);
+                  setDeckL(p => ({ ...p, currentTime: sec }));
+                }}
                 onPitchChange={p => handleDeckPitchChange('L', p)}
                 onPitchBend={amt => handleDeckPitchBend('L', amt)}
                 onSync={() => handleSyncDecks('L')}
@@ -1163,6 +1332,7 @@ const App: React.FC = () => {
                   const target = deckL.hotCues[idx];
                   if (target !== null && target !== undefined) {
                     audioEngine.scrubDeck('L', target);
+                    setDeckL(p => ({ ...p, currentTime: target }));
                   }
                 }}
                 onSetLoop={beats => setDeckL(p => ({ ...p, loopLength: beats, isLooping: true }))}
@@ -1185,10 +1355,7 @@ const App: React.FC = () => {
                 onDeckEQKillToggle={handleDeckEQKillToggle}
                 onDeckFilterChange={handleDeckFilterChange}
                 onDeckVolumeChange={handleDeckVolumeChange}
-                onDeckCueMonitorToggle={deckId => {
-                  if (deckId === 'L') setDeckL(p => ({ ...p, cueMonitor: !p.cueMonitor }));
-                  else setDeckR(p => ({ ...p, cueMonitor: !p.cueMonitor }));
-                }}
+                onDeckCueMonitorToggle={handleDeckCueMonitorToggle}
                 onCrossfaderChange={handleCrossfaderChange}
                 onCrossfaderCurveToggle={handleCrossfaderCurveToggle}
                 onFxChange={handleFxChange}
@@ -1203,7 +1370,14 @@ const App: React.FC = () => {
                 onSelectMidiControl={id => setSelectedMidiControl(id)}
                 onPlayToggle={handlePlayDeckR}
                 onCue={handleCueDeckR}
-                onScrub={sec => audioEngine.scrubDeck('R', sec)}
+                onCueHoldStart={() => handleCueDeckR(true)}
+                onCueHoldEnd={handleCueDeckRRelease}
+                onSetCuePoint={handleSetCueDeckR}
+                onVolumeChange={val => handleDeckVolumeChange('R', val)}
+                onScrub={sec => {
+                  audioEngine.scrubDeck('R', sec);
+                  setDeckR(p => ({ ...p, currentTime: sec }));
+                }}
                 onPitchChange={p => handleDeckPitchChange('R', p)}
                 onPitchBend={amt => handleDeckPitchBend('R', amt)}
                 onSync={() => handleSyncDecks('R')}
@@ -1219,6 +1393,7 @@ const App: React.FC = () => {
                   const target = deckR.hotCues[idx];
                   if (target !== null && target !== undefined) {
                     audioEngine.scrubDeck('R', target);
+                    setDeckR(p => ({ ...p, currentTime: target }));
                   }
                 }}
                 onSetLoop={beats => setDeckR(p => ({ ...p, loopLength: beats, isLooping: true }))}
@@ -1281,6 +1456,101 @@ const App: React.FC = () => {
             history={history}
             onSelectSongFromHistory={handleSelectSongFromHistory}
             onSendToDeck={handleSendToDeck}
+          />
+        )}
+
+        {/* VIEW 6: LOCAL MUSIC EXPLORER (PC / LAPTOP / PHONE) */}
+        {activeView === 'explorer' && (
+          <MusicExplorerSection
+            onLoadTrackToDeck={(deckId, file, buffer) => {
+              if (buffer) {
+                audioEngine.setDeckBuffer(deckId, buffer);
+                const name = file.name.replace(/\.[^/.]+$/, '');
+                if (deckId === 'L') {
+                  setDeckL(prev => ({
+                    ...prev,
+                    trackName: name,
+                    artist: 'Colecție Locală',
+                    duration: buffer.duration,
+                    audioBuffer: buffer,
+                    currentTime: 0,
+                    isPlaying: false,
+                  }));
+                } else {
+                  setDeckR(prev => ({
+                    ...prev,
+                    trackName: name,
+                    artist: 'Colecție Locală',
+                    duration: buffer.duration,
+                    audioBuffer: buffer,
+                    currentTime: 0,
+                    isPlaying: false,
+                  }));
+                }
+              } else {
+                handleLoadDeckTrack(deckId, file);
+              }
+            }}
+            trackEndMode={trackEndMode}
+            onTrackEndModeChange={mode => setTrackEndMode(mode)}
+            connectedMidiDevice={midiDevices.length > 0 ? midiDevices.join(', ') : 'Hercules DJ / OTG'}
+            deckLTrackName={deckL.trackName}
+            deckRTrackName={deckR.trackName}
+          />
+        )}
+
+        {/* VIEW 7: ANDROID & MOBILE TACTILE DJ CONSOLE (OTG COMPATIBLE) */}
+        {activeView === 'android' && (
+          <AndroidConsoleView
+            deckL={deckL}
+            deckR={deckR}
+            mixer={mixer}
+            peakL={deckPeakL}
+            peakR={deckPeakR}
+            connectedMidiDevice={midiDevices.length > 0 ? midiDevices.join(', ') : 'Hercules DJControl Inpulse (OTG)'}
+            onPlayToggleL={handlePlayDeckL}
+            onPlayToggleR={handlePlayDeckR}
+            onCueL={handleCueDeckL}
+            onCueR={handleCueDeckR}
+            onCueHoldStartL={() => handleCueDeckL(true)}
+            onCueHoldEndL={handleCueDeckLRelease}
+            onCueHoldStartR={() => handleCueDeckR(true)}
+            onCueHoldEndR={handleCueDeckRRelease}
+            onSetCuePointL={handleSetCueDeckL}
+            onSetCuePointR={handleSetCueDeckR}
+            onSyncL={() => handleSyncDecks('L')}
+            onSyncR={() => handleSyncDecks('R')}
+            onToggleLoopL={() => setDeckL(p => ({ ...p, isLooping: !p.isLooping }))}
+            onToggleLoopR={() => setDeckR(p => ({ ...p, isLooping: !p.isLooping }))}
+            onHotCueL={idx => {
+              const target = deckL.hotCues[idx];
+              if (target !== null && target !== undefined) {
+                audioEngine.scrubDeck('L', target);
+                setDeckL(p => ({ ...p, currentTime: target }));
+              }
+            }}
+            onHotCueR={idx => {
+              const target = deckR.hotCues[idx];
+              if (target !== null && target !== undefined) {
+                audioEngine.scrubDeck('R', target);
+                setDeckR(p => ({ ...p, currentTime: target }));
+              }
+            }}
+            onJogScratchL={delta => handleJogScratch('L', delta)}
+            onJogScratchR={delta => handleJogScratch('R', delta)}
+            onVolumeChangeL={val => handleDeckVolumeChange('L', val)}
+            onVolumeChangeR={val => handleDeckVolumeChange('R', val)}
+            onCrossfaderChange={handleCrossfaderChange}
+            onCueMonitorToggleL={() => handleDeckCueMonitorToggle('L')}
+            onCueMonitorToggleR={() => handleDeckCueMonitorToggle('R')}
+            onDeckEQChange={handleDeckEQChange}
+            onDeckFilterChange={handleDeckFilterChange}
+            onTriggerSample={id => {
+              if (id.startsWith('j-')) handleTriggerJingle(id);
+              else if (id.startsWith('s-l-')) handleTriggerSampleL(id);
+              else handleTriggerSampleR(id);
+            }}
+            onOpenExplorer={() => setActiveView('explorer')}
           />
         )}
       </main>
