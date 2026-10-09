@@ -1,0 +1,8 @@
+{
+  "name": "HERCULE AI: Studio DJ",
+  "description": "A React web app that uses Gemini AI to analyze the vibe of an image from camera or upload, suggesting a matching YouTube song for auto-playback. It also keeps a persistent history of suggestions.",
+  "requestFramePermissions": [
+    "camera"
+  ],
+  "majorCapabilities": []
+}
