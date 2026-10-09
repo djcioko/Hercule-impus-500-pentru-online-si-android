@@ -499,6 +499,67 @@ class AudioEngine {
     return { left: peak, right: Math.min(1.0, peak * (0.95 + Math.random() * 0.1)) };
   }
 
+  // Microphone nodes
+  private micStream: MediaStream | null = null;
+  private micSource: MediaStreamAudioSourceNode | null = null;
+  private micGain: GainNode | null = null;
+  private isMicOn = false;
+
+  public async startMicrophone(): Promise<boolean> {
+    try {
+      this.init();
+      const ctx = this.getContext();
+      this.micStream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      this.micSource = ctx.createMediaStreamSource(this.micStream);
+      this.micGain = ctx.createGain();
+      this.micGain.gain.setValueAtTime(1.0, ctx.currentTime);
+      this.micSource.connect(this.micGain);
+      this.micGain.connect(this.masterGain!);
+      this.isMicOn = true;
+      return true;
+    } catch (e) {
+      console.warn('Microphone access error:', e);
+      return false;
+    }
+  }
+
+  public stopMicrophone() {
+    if (this.micStream) {
+      this.micStream.getTracks().forEach(t => t.stop());
+      this.micStream = null;
+    }
+    if (this.micSource) {
+      try {
+        this.micSource.disconnect();
+      } catch {}
+      this.micSource = null;
+    }
+    if (this.micGain) {
+      try {
+        this.micGain.disconnect();
+      } catch {}
+      this.micGain = null;
+    }
+    this.isMicOn = false;
+  }
+
+  public isMicrophoneActive(): boolean {
+    return this.isMicOn;
+  }
+
+  public setMicrophoneVolume(vol: number) {
+    if (this.micGain && this.ctx) {
+      this.micGain.gain.setValueAtTime(vol, this.ctx.currentTime);
+    }
+  }
+
+  public async loadAudioFromUrl(url: string): Promise<AudioBuffer> {
+    const ctx = this.getContext();
+    const response = await fetch(url);
+    const arrayBuf = await response.arrayBuffer();
+    return await ctx.decodeAudioData(arrayBuf);
+  }
+
   public getDeckPeak(deckId: 'L' | 'R'): number {
     const deck = this.deckNodes[deckId];
     if (!deck || !deck.isPlaying) return 0;

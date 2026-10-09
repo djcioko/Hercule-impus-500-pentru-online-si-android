@@ -1,5 +1,6 @@
-import React, { useRef } from 'react';
+import React from 'react';
 import { SoundItem } from '../../types/dj';
+import { MidiEditBadge } from './MidiEditBadge';
 import { Upload, Volume2 } from 'lucide-react';
 
 interface PerformancePadsProps {
@@ -7,6 +8,9 @@ interface PerformancePadsProps {
   deckSide: 'L' | 'R';
   samples: (SoundItem & { defaultSynth: string })[];
   activePads: Set<string>;
+  isMidiEditMode?: boolean;
+  selectedMidiControl?: string | null;
+  onSelectMidiControl?: (id: string) => void;
   onTriggerPad: (id: string) => void;
   onFileUpload: (id: string, file: File) => void;
   onVolumeChange: (id: string, vol: number) => void;
@@ -17,18 +21,22 @@ export const PerformancePads: React.FC<PerformancePadsProps> = ({
   deckSide,
   samples,
   activePads,
+  isMidiEditMode = false,
+  selectedMidiControl = null,
+  onSelectMidiControl,
   onTriggerPad,
   onFileUpload,
   onVolumeChange,
 }) => {
   const isLeft = deckSide === 'L';
+  const prefix = isLeft ? 'sample_l_' : 'sample_r_';
   const themeColor = isLeft ? 'border-cyan-500/40 text-cyan-400' : 'border-orange-500/40 text-orange-400';
   const activeGlow = isLeft
     ? 'bg-cyan-400 text-black border-cyan-300 shadow-[0_0_20px_#00f2ff] scale-95'
     : 'bg-orange-400 text-black border-orange-300 shadow-[0_0_20px_#ff7700] scale-95';
 
   return (
-    <div className="flex-1 bg-zinc-900/90 border border-zinc-800 rounded-xl p-3 flex flex-col gap-2.5 shadow-xl">
+    <div className="flex-1 bg-zinc-900/90 border border-zinc-800 rounded-xl p-3 flex flex-col gap-2.5 shadow-xl select-none">
       {/* Header */}
       <div className="flex items-center justify-between border-b border-zinc-800 pb-2">
         <h4 className={`text-xs font-mono font-bold uppercase tracking-wider flex items-center gap-1.5 ${themeColor}`}>
@@ -44,9 +52,10 @@ export const PerformancePads: React.FC<PerformancePadsProps> = ({
 
       {/* 2x4 MPC Pads Grid */}
       <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
-        {samples.map(sample => {
+        {samples.map((sample, idx) => {
           const isActive = activePads.has(sample.id);
           const fileInputId = `pad-upload-${sample.id}`;
+          const padControlId = `${prefix}${idx + 1}`;
 
           return (
             <div
@@ -63,28 +72,35 @@ export const PerformancePads: React.FC<PerformancePadsProps> = ({
                 </span>
               </div>
 
-              {/* Main Performance Trigger Button */}
-              <button
-                onClick={() => onTriggerPad(sample.id)}
-                className={`w-full my-2 py-3.5 px-1 rounded-md text-center transition-all duration-75 border font-semibold flex flex-col items-center justify-center gap-1 select-none active:scale-95 ${
-                  isActive
-                    ? activeGlow
-                    : 'bg-zinc-850 hover:bg-zinc-800 border-zinc-750 text-gray-200'
-                }`}
+              {/* Main Performance Trigger Button with MIDI Learn badge */}
+              <MidiEditBadge
+                controlId={padControlId}
+                isEditMode={isMidiEditMode}
+                isSelected={selectedMidiControl === padControlId}
+                onClick={() => onSelectMidiControl && onSelectMidiControl(padControlId)}
               >
-                <span className="text-xs truncate max-w-full font-bold">
-                  {sample.name}
-                </span>
-                {sample.customFileName ? (
-                  <span className="text-[8px] text-zinc-400 truncate max-w-full italic">
-                    📁 {sample.customFileName}
+                <button
+                  onClick={() => onTriggerPad(sample.id)}
+                  className={`w-full my-1.5 py-3.5 px-1 rounded-md text-center transition-all duration-75 border font-semibold flex flex-col items-center justify-center gap-1 select-none active:scale-95 ${
+                    isActive
+                      ? activeGlow
+                      : 'bg-zinc-850 hover:bg-zinc-800 border-zinc-750 text-gray-200'
+                  }`}
+                >
+                  <span className="text-xs truncate max-w-full font-bold">
+                    {sample.name}
                   </span>
-                ) : (
-                  <span className="text-[8px] text-zinc-500">
-                    synth #{sample.defaultSynth}
-                  </span>
-                )}
-              </button>
+                  {sample.customFileName ? (
+                    <span className="text-[8px] text-zinc-400 truncate max-w-full italic">
+                      📁 {sample.customFileName}
+                    </span>
+                  ) : (
+                    <span className="text-[8px] text-zinc-500">
+                      synth #{sample.defaultSynth}
+                    </span>
+                  )}
+                </button>
+              </MidiEditBadge>
 
               {/* Bottom bar: Volume & File Upload */}
               <div className="flex items-center justify-between gap-1 pt-1 border-t border-zinc-900">

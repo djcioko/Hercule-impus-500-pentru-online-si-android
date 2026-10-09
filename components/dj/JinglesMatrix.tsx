@@ -1,10 +1,14 @@
 import React from 'react';
 import { SoundItem } from '../../types/dj';
+import { MidiEditBadge } from './MidiEditBadge';
 import { Radio, Upload, Volume2 } from 'lucide-react';
 
 interface JinglesMatrixProps {
   jingles: (SoundItem & { defaultSynth: string })[];
   activeJingles: Set<string>;
+  isMidiEditMode?: boolean;
+  selectedMidiControl?: string | null;
+  onSelectMidiControl?: (id: string) => void;
   onTriggerJingle: (id: string) => void;
   onFileUpload: (id: string, file: File) => void;
   onVolumeChange: (id: string, vol: number) => void;
@@ -13,12 +17,15 @@ interface JinglesMatrixProps {
 export const JinglesMatrix: React.FC<JinglesMatrixProps> = ({
   jingles,
   activeJingles,
+  isMidiEditMode = false,
+  selectedMidiControl = null,
+  onSelectMidiControl,
   onTriggerJingle,
   onFileUpload,
   onVolumeChange,
 }) => {
   return (
-    <div className="w-full bg-zinc-900/95 border border-zinc-800 rounded-xl p-4 flex flex-col gap-3 shadow-2xl backdrop-blur">
+    <div className="w-full bg-zinc-900/95 border border-zinc-800 rounded-xl p-4 flex flex-col gap-3 shadow-2xl backdrop-blur select-none">
       {/* Header */}
       <div className="flex items-center justify-between border-b border-zinc-800 pb-2.5">
         <div className="flex items-center gap-2">
@@ -36,9 +43,10 @@ export const JinglesMatrix: React.FC<JinglesMatrixProps> = ({
 
       {/* 4x4 Jingles Matrix */}
       <div className="grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-8 gap-2.5">
-        {jingles.map(jingle => {
+        {jingles.map((jingle, idx) => {
           const isActive = activeJingles.has(jingle.id);
           const fileInputId = `jingle-upload-${jingle.id}`;
+          const jingleControlId = `jingle_${idx + 1}`;
 
           return (
             <div
@@ -55,28 +63,35 @@ export const JinglesMatrix: React.FC<JinglesMatrixProps> = ({
                 </span>
               </div>
 
-              {/* Main Jingle Trigger Button */}
-              <button
-                onClick={() => onTriggerJingle(jingle.id)}
-                className={`w-full my-2 py-3 px-1.5 rounded-md text-center transition-all duration-75 border font-semibold flex flex-col items-center justify-center gap-0.5 select-none active:scale-95 ${
-                  isActive
-                    ? 'bg-purple-500 text-white border-purple-300 shadow-[0_0_20px_#a855f7] scale-95 font-bold animate-pulse'
-                    : 'bg-zinc-850 hover:bg-zinc-800 border-zinc-750 text-gray-200 hover:text-white'
-                }`}
+              {/* Main Jingle Trigger Button with MIDI Badge */}
+              <MidiEditBadge
+                controlId={jingleControlId}
+                isEditMode={isMidiEditMode}
+                isSelected={selectedMidiControl === jingleControlId}
+                onClick={() => onSelectMidiControl && onSelectMidiControl(jingleControlId)}
               >
-                <span className="text-[11px] truncate max-w-full font-bold">
-                  {jingle.name}
-                </span>
-                {jingle.customFileName ? (
-                  <span className="text-[8px] text-purple-300 truncate max-w-full italic">
-                    📁 {jingle.customFileName}
+                <button
+                  onClick={() => onTriggerJingle(jingle.id)}
+                  className={`w-full my-1.5 py-3 px-1.5 rounded-md text-center transition-all duration-75 border font-semibold flex flex-col items-center justify-center gap-0.5 select-none active:scale-95 ${
+                    isActive
+                      ? 'bg-purple-500 text-white border-purple-300 shadow-[0_0_20px_#a855f7] scale-95 font-bold animate-pulse'
+                      : 'bg-zinc-850 hover:bg-zinc-800 border-zinc-750 text-gray-200 hover:text-white'
+                  }`}
+                >
+                  <span className="text-[11px] truncate max-w-full font-bold">
+                    {jingle.name}
                   </span>
-                ) : (
-                  <span className="text-[8px] text-zinc-500">
-                    FX: {jingle.defaultSynth}
-                  </span>
-                )}
-              </button>
+                  {jingle.customFileName ? (
+                    <span className="text-[8px] text-purple-300 truncate max-w-full italic">
+                      📁 {jingle.customFileName}
+                    </span>
+                  ) : (
+                    <span className="text-[8px] text-zinc-500">
+                      FX: {jingle.defaultSynth}
+                    </span>
+                  )}
+                </button>
+              </MidiEditBadge>
 
               {/* Footer: Upload & Volume */}
               <div className="flex items-center justify-between gap-1 pt-1 border-t border-zinc-900">
